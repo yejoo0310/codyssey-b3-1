@@ -2,7 +2,7 @@
 
 해시맵, 이중 연결 리스트, 최소 힙을 직접 구현하면서 CLI 기반의 메모리 저장소를 만드는 학습 프로젝트입니다.
 
-현재는 **Phase 2: 체이닝 해시맵 구현**까지 완료한 상태입니다. CLI는 아직 Phase 0의 준비 안내를 출력하며, 명령어 입력은 Phase 4에서 구현합니다.
+현재는 **Phase 3: 기본 문자열 저장소 구현**까지 완료한 상태입니다. CLI는 아직 Phase 0의 준비 안내를 출력하며, 명령어 입력은 Phase 4에서 구현합니다.
 
 ## 개발 환경과 실행
 
@@ -28,7 +28,7 @@ Mini Redis: Phase 0 준비 완료. 명령어 입력은 Phase 4에서 구현합�
 python3 -m unittest discover -v
 ```
 
-현재 테스트는 `main.py`의 정상 실행, 이중 연결 리스트, 체이닝 해시맵의 동작을 확인합니다. 이후 각 자료구조와 명령어의 테스트를 추가합니다.
+현재 테스트는 `main.py`의 정상 실행, 이중 연결 리스트, 체이닝 해시맵, 기본 문자열 저장소의 동작을 확인합니다. 이후 각 자료구조와 명령어의 테스트를 추가합니다.
 
 ## 파일별 역할
 
@@ -46,6 +46,7 @@ tests/
     test_startup.py          프로그램 실행 확인
     test_linked_list.py      이중 연결 리스트 검증
     test_hash_map.py         체이닝 해시맵과 버킷 확장 검증
+    test_store.py            기본 저장소 명령 조합 검증
 ```
 
 `main.py`는 실행을 시작하고, `cli.py`는 사용자와의 입출력을 담당합니다. 실제 저장과 삭제는 `store.py`에서 처리하며, 각 자료구조는 독립된 모듈에 둡니다.
@@ -66,7 +67,7 @@ tests/
 
 ### 명령어와 정책
 
-- [ ] `SET`, `GET`, `DEL`, `EXISTS`, `DBSIZE`, `KEYS`
+- [x] `SET`, `GET`, `DEL`, `EXISTS`, `DBSIZE`, `KEYS`의 저장소 기능 (CLI 연결은 Phase 4)
 - [ ] 성공한 `SET`, `GET`에서 LRU 갱신
 - [ ] `CONFIG SET maxmemory bytes`: 0은 무제한
 - [ ] `INFO memory`: `used_memory`, `maxmemory`, `evicted_keys` 출력
@@ -244,3 +245,62 @@ python3 -m unittest tests.test_hash_map -v
 ```
 
 읽는 순서는 `_Entry` → `_hash` → `_bucket_index` → `_find_node` → `put`·`get`·`contains`·`remove` → `_resize`를 권장합니다. 확장 전후에 `a`, `e`, `i`, `m`의 버킷 위치가 어떻게 달라지는지 직접 계산해보세요.
+
+## Phase 3에서 이해할 내용
+
+`RedisStore`는 Phase 2의 `HashMap`에 문자열 키와 값을 저장하고, 기본 명령 6개의 결과를 반환합니다. 해시 함수와 충돌 처리는 해시맵에 맡기며, 저장소에서는 명령의 동작과 반환값을 정합니다.
+
+```text
+CLI (Phase 4) → RedisStore → HashMap → 버킷의 연결 리스트
+```
+
+저장소는 입력 문자열을 명령으로 나누거나 화면에 출력하지 않습니다. `GET`의 `None`을 `(nil)`로 바꾸거나 정수 앞에 `(integer)`를 붙이는 일은 Phase 4의 CLI가 담당합니다. 현재는 Python에서 메서드를 호출해 사용할 수 있습니다.
+
+### 사용 예시
+
+프로젝트 루트에서 `python3`를 실행한 뒤 다음 코드를 입력합니다.
+
+```python
+from mini_redis.store import RedisStore
+
+store = RedisStore()
+print(store.set("name", "Alice"))  # OK
+print(store.get("name"))           # Alice
+print(store.set("name", "Bob"))    # OK: 기존 값 변경
+print(store.dbsize())              # 1
+print(store.exists("name"))        # 1
+print(store.keys())                # ['name']
+print(store.delete("name"))        # 1
+print(store.get("name"))           # None
+print(store.delete("name"))        # 0
+```
+
+### 명령과 메서드의 약속
+
+| 명령 | 메서드 | 반환값 |
+| --- | --- | --- |
+| `SET key value` | `set(key, value)` | 새 저장과 덮어쓰기 모두 `"OK"` |
+| `GET key` | `get(key)` | 저장된 문자열, 없는 키이면 `None` |
+| `DEL key` | `delete(key)` | 삭제하면 정수 `1`, 없는 키이면 정수 `0` |
+| `EXISTS key` | `exists(key)` | 있으면 정수 `1`, 없으면 정수 `0` |
+| `DBSIZE` | `dbsize()` | 현재 키 개수 |
+| `KEYS` | `keys()` | 전체 키를 담은 새 배열. 순서는 보장하지 않음 |
+
+`del`은 Python 예약어이므로 메서드 이름은 `delete`로 정했습니다. 해시맵의 `remove`와 `contains`가 반환하는 참·거짓은 `int`로 변환해 명령에 맞는 정수 결과를 만듭니다.
+
+해시맵은 다양한 값을 받을 수 있지만 저장소는 문자열만 허용합니다. 잘못된 값은 저장 전에 `TypeError`로 거부하고, 키의 문자열 검사는 해시맵을 재사용합니다. 숫자처럼 보이는 `"001"`도 그대로 보존하며, 빈 문자열과 한글도 저장할 수 있습니다. 값이 빈 문자열이어도 키는 존재합니다.
+
+### 공통 삭제 경로
+
+`delete()`는 `_delete_entry()`를 호출합니다. 실제 데이터 삭제를 이곳에 모아 두었으므로, 이후 TTL 만료와 LRU 제거도 같은 경로에서 처리하도록 확장할 수 있습니다. 현재는 해시맵에서 키를 삭제하는 역할만 합니다. LRU·메모리 제한은 Phase 5, TTL은 Phase 7에서 구현합니다.
+
+### 검증 방법
+
+```bash
+python3 -m unittest tests.test_store -v
+python3 -m unittest discover -v
+```
+
+저장소 테스트는 덮어쓰기 후 키 개수, 삭제 후 전체 조회, 충돌한 키의 개별 삭제, 해시맵 확장 이후 여러 명령의 조합을 확인합니다. 잘못된 입력을 거부해도 기존 데이터가 유지되는지, 저장소 인스턴스끼리 데이터가 섞이지 않는지도 검증합니다.
+
+읽는 순서는 `RedisStore.__init__` → `set`·`get` → `exists`·`dbsize`·`keys` → `delete`·`_delete_entry`를 권장합니다. 같은 키를 두 번 저장하거나 두 번 삭제할 때 반환값과 키 개수가 어떻게 달라지는지 먼저 예상해보세요.
