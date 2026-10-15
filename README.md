@@ -2,7 +2,7 @@
 
 해시맵, 이중 연결 리스트, 최소 힙을 직접 구현하면서 CLI 기반의 메모리 저장소를 만드는 학습 프로젝트입니다.
 
-현재는 **Phase 0: 요구사항 정리와 프로젝트 준비**를 완료한 상태입니다. 실행하면 준비 안내를 출력하며, 자료구조와 Redis 명령어는 이후 Phase에서 구현합니다.
+현재는 **Phase 1: 이중 연결 리스트 구현**까지 완료한 상태입니다. CLI는 아직 Phase 0의 준비 안내를 출력하며, 명령어 입력은 Phase 4에서 구현합니다.
 
 ## 개발 환경과 실행
 
@@ -28,7 +28,7 @@ Mini Redis: Phase 0 준비 완료. 명령어 입력은 Phase 4에서 구현합�
 python3 -m unittest discover -v
 ```
 
-현재 테스트는 실제로 `main.py`를 별도 프로세스에서 실행해 정상 종료와 안내 출력을 확인합니다. 이후 각 자료구조와 명령어의 테스트를 추가합니다.
+현재 테스트는 `main.py`의 정상 실행과 이중 연결 리스트의 동작을 확인합니다. 이후 각 자료구조와 명령어의 테스트를 추가합니다.
 
 ## 파일별 역할
 
@@ -44,6 +44,7 @@ mini_redis/
 tests/
     __init__.py              테스트 패키지 표시
     test_startup.py          프로그램 실행 확인
+    test_linked_list.py      이중 연결 리스트 검증
 ```
 
 `main.py`는 실행을 시작하고, `cli.py`는 사용자와의 입출력을 담당합니다. 실제 저장과 삭제는 `store.py`에서 처리하며, 각 자료구조는 독립된 모듈에 둡니다.
@@ -54,8 +55,8 @@ tests/
 
 ### 자료구조
 
-- [ ] 이중 연결 리스트: `prev`, `next`, `data`를 가진 노드
-- [ ] `insert_front`, `insert_back`, `remove_front`, `remove_back`, `remove_node`, `move_to_front`를 O(1)에 수행
+- [x] 이중 연결 리스트: `prev`, `next`, `data`를 가진 노드
+- [x] `insert_front`, `insert_back`, `remove_front`, `remove_back`, `remove_node`, `move_to_front`를 O(1)에 수행
 - [ ] 해시맵: 직접 만든 해시 함수와 체이닝 충돌 해결
 - [ ] `put`, `get`, `remove`, `contains`, `keys`, `size`
 - [ ] 로드 팩터 0.75 초과 시 버킷 수를 두 배로 확장하고 재해싱
@@ -132,3 +133,52 @@ tests/
 - **테스트**: 기대한 동작을 코드로 확인합니다. 표준 라이브러리 `unittest`를 사용하고, 반복해서 확인할 수 있게 만듭니다.
 
 Phase 0 완료 기준은 위 실행 명령과 테스트 명령이 성공하고, 각 파일의 역할과 다음 Phase의 범위를 설명할 수 있는 상태입니다.
+
+## Phase 1에서 이해할 내용
+
+각 노드는 앞 노드를 가리키는 `prev`, 뒤 노드를 가리키는 `next`, 저장할 값인 `data`를 가집니다. 리스트는 맨 앞인 `head`, 맨 뒤인 `tail`을 기억합니다. 비어 있으면 둘 다 `None`입니다.
+
+```text
+head                         tail
+ ↓                            ↓
+[A] <--------> [B] <--------> [C]
+```
+
+`B`를 삭제할 때는 `A.next`를 `C`로, `C.prev`를 `A`로 연결합니다. 삭제할 노드를 이미 알고 있으므로 검색할 필요가 없습니다. 모든 삽입·삭제·이동 메서드는 반복문 없이 정해진 수의 참조만 바꾸어 O(1)에 동작합니다. 반면 값을 보고 노드를 처음부터 찾는 작업은 O(n)입니다.
+
+### 사용 예시
+
+프로젝트 루트에서 `python3`를 실행한 뒤 다음 코드를 입력할 수 있습니다.
+
+```python
+from mini_redis.linked_list import DoublyLinkedList
+
+linked = DoublyLinkedList()
+alice = linked.insert_front("alice")
+bob = linked.insert_front("bob")      # bob -> alice
+linked.move_to_front(alice)           # alice -> bob
+removed = linked.remove_back()        # bob 제거
+print(removed.data)                    # bob
+print(linked.head.data)                # alice
+print(len(linked))                     # 1
+```
+
+### 메서드의 약속
+
+| 메서드 | 결과 |
+| --- | --- |
+| `insert_front(data)`, `insert_back(data)` | 새로 만든 노드를 반환합니다. 이후 삭제·이동을 위해 참조를 보관할 수 있습니다. |
+| `remove_front()`, `remove_back()` | 분리한 노드를 반환합니다. 빈 리스트에서는 `None`을 반환합니다. |
+| `remove_node(node)` | 해당 노드를 분리해 반환하고 `prev`, `next`를 `None`으로 초기화합니다. |
+| `move_to_front(node)` | 새 노드를 만들지 않고 기존 노드를 이동합니다. 반환값은 `None`이며 노드 개수는 유지됩니다. |
+| `len(linked)` | 저장해 둔 노드 개수를 O(1)에 반환합니다. |
+
+노드의 `_owner`는 소속 리스트를 기록하는 내부 필드입니다. 이를 통해 다른 리스트의 노드, 이미 삭제한 노드, 아직 삽입하지 않은 노드를 순회 없이 판별합니다. 잘못된 노드를 삭제하거나 이동하려 하면 `ValueError`가 발생합니다. 연결과 소속 필드는 직접 수정하지 않고 리스트의 메서드를 사용합니다.
+
+Phase 1 테스트만 실행하려면 다음 명령을 사용합니다.
+
+```bash
+python3 -m unittest tests.test_linked_list -v
+```
+
+읽는 순서는 `Node` → `insert_front`와 `_prepend` → `insert_back` → `remove_node` → `move_to_front`를 권장합니다. 빈 리스트, 노드 하나, 가운데 노드 삭제에서 앞뒤 참조가 어떻게 바뀌는지 그려보세요. 향후 LRU에서는 맨 앞을 최근 사용한 키, 맨 뒤를 제거 대상으로 활용합니다.
