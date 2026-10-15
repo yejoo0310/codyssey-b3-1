@@ -2,7 +2,7 @@
 
 해시맵, 이중 연결 리스트, 최소 힙을 직접 구현하면서 CLI 기반의 메모리 저장소를 만드는 학습 프로젝트입니다.
 
-현재는 **Phase 1: 이중 연결 리스트 구현**까지 완료한 상태입니다. CLI는 아직 Phase 0의 준비 안내를 출력하며, 명령어 입력은 Phase 4에서 구현합니다.
+현재는 **Phase 2: 체이닝 해시맵 구현**까지 완료한 상태입니다. CLI는 아직 Phase 0의 준비 안내를 출력하며, 명령어 입력은 Phase 4에서 구현합니다.
 
 ## 개발 환경과 실행
 
@@ -28,7 +28,7 @@ Mini Redis: Phase 0 준비 완료. 명령어 입력은 Phase 4에서 구현합�
 python3 -m unittest discover -v
 ```
 
-현재 테스트는 `main.py`의 정상 실행과 이중 연결 리스트의 동작을 확인합니다. 이후 각 자료구조와 명령어의 테스트를 추가합니다.
+현재 테스트는 `main.py`의 정상 실행, 이중 연결 리스트, 체이닝 해시맵의 동작을 확인합니다. 이후 각 자료구조와 명령어의 테스트를 추가합니다.
 
 ## 파일별 역할
 
@@ -45,6 +45,7 @@ tests/
     __init__.py              테스트 패키지 표시
     test_startup.py          프로그램 실행 확인
     test_linked_list.py      이중 연결 리스트 검증
+    test_hash_map.py         체이닝 해시맵과 버킷 확장 검증
 ```
 
 `main.py`는 실행을 시작하고, `cli.py`는 사용자와의 입출력을 담당합니다. 실제 저장과 삭제는 `store.py`에서 처리하며, 각 자료구조는 독립된 모듈에 둡니다.
@@ -57,9 +58,9 @@ tests/
 
 - [x] 이중 연결 리스트: `prev`, `next`, `data`를 가진 노드
 - [x] `insert_front`, `insert_back`, `remove_front`, `remove_back`, `remove_node`, `move_to_front`를 O(1)에 수행
-- [ ] 해시맵: 직접 만든 해시 함수와 체이닝 충돌 해결
-- [ ] `put`, `get`, `remove`, `contains`, `keys`, `size`
-- [ ] 로드 팩터 0.75 초과 시 버킷 수를 두 배로 확장하고 재해싱
+- [x] 해시맵: 직접 만든 해시 함수와 체이닝 충돌 해결
+- [x] `put`, `get`, `remove`, `contains`, `keys`, `size`
+- [x] 로드 팩터 0.75 초과 시 버킷 수를 두 배로 확장하고 재해싱
 - [ ] 최소 힙: `push`, `pop`, `peek`, `size`, `_heapify_up`, `_heapify_down`
 - [ ] 힙으로 가장 빠른 만료 시각 조회
 
@@ -182,3 +183,64 @@ python3 -m unittest tests.test_linked_list -v
 ```
 
 읽는 순서는 `Node` → `insert_front`와 `_prepend` → `insert_back` → `remove_node` → `move_to_front`를 권장합니다. 빈 리스트, 노드 하나, 가운데 노드 삭제에서 앞뒤 참조가 어떻게 바뀌는지 그려보세요. 향후 LRU에서는 맨 앞을 최근 사용한 키, 맨 뒤를 제거 대상으로 활용합니다.
+
+## Phase 2에서 이해할 내용
+
+해시맵은 문자열 키로 해시값을 만들고, 이를 버킷 개수로 나눈 나머지를 저장 위치로 사용합니다. 기본 버킷 수는 8개입니다. 각 버킷은 Phase 1의 `DoublyLinkedList`로 만들었습니다.
+
+```text
+문자열 키 → 직접 만든 해시 함수 → 해시값 % 버킷 개수
+
+버킷 0: 비어 있음
+버킷 1: (a, Alice) <-> (i, Iris) <-> (q, Quinn)
+버킷 2: ...
+```
+
+서로 다른 키가 같은 버킷에 들어가는 것을 **충돌**이라고 합니다. 해당 버킷의 연결 리스트를 순회하며 실제 키를 비교해 항목을 구분하는 방식이 **체이닝**입니다. 해시값이나 버킷 위치가 같아도 같은 키라는 뜻은 아닙니다.
+
+### 해시 함수와 버킷 확장
+
+해시 함수는 문자마다 `이전 결과 × 31 + 문자 코드`를 계산합니다. 문자 순서가 결과에 반영되며, 매 단계에서 `0xFFFFFFFF`로 범위를 제한해 정수가 계속 커지지 않게 합니다. Python 내장 `hash`는 사용하지 않습니다.
+
+**로드 팩터 = 키 개수 / 버킷 개수**입니다. 버킷이 4개라면 키 3개일 때는 0.75이므로 유지하고, 4번째 키를 추가하면 버킷을 8개로 늘립니다. 같은 키를 덮어쓸 때는 개수와 버킷 수가 바뀌지 않습니다.
+
+버킷 수가 바뀌면 나머지 계산 결과도 달라질 수 있으므로 모든 키의 위치를 다시 계산합니다. 이것이 **재해싱**입니다. 항목과 값 객체는 유지하고, 새 버킷에는 별도의 연결 리스트 노드를 만듭니다. 재배치 중에는 키 개수를 늘리지 않습니다.
+
+### 사용 예시와 메서드의 약속
+
+```python
+from mini_redis.hash_map import HashMap
+
+mapping = HashMap(initial_capacity=4)
+mapping.put("name", "Alice")
+mapping.put("name", "Bob")       # 같은 키의 값만 변경
+print(mapping.get("name"))       # Bob
+print(mapping.size())            # 1
+print(mapping.contains("name"))  # True
+print(mapping.remove("name"))    # True
+print(mapping.get("name"))       # None
+```
+
+| 메서드 | 결과 |
+| --- | --- |
+| `put(key, value)` | 키와 값을 저장합니다. 기존 키이면 값을 바꾸며, 반환값은 `None`입니다. |
+| `get(key)` | 저장된 값을 반환합니다. 없는 키이면 `None`입니다. |
+| `contains(key)` | 값이 `None`이어도 키가 있으면 `True`입니다. |
+| `remove(key)` | 삭제하면 `True`, 없는 키이면 `False`입니다. |
+| `keys()` | 모든 키를 새 배열로 반환합니다. 순서는 보장하지 않습니다. |
+| `size()`, `len(mapping)` | 저장된 키 개수를 반환합니다. |
+| `mapping.capacity` | 현재 버킷 개수를 읽는 속성입니다. |
+
+키는 문자열만 받으며 다른 타입이면 `TypeError`가 발생합니다. 빈 문자열과 한글도 저장할 수 있습니다. 초기 버킷 수는 양의 정수만 허용하고, 잘못된 값이면 `ValueError`가 발생합니다.
+
+키 길이를 일정하게 보면 조회·삽입·삭제는 평균 O(1)이며, 충돌이 몰리면 최악 O(n)입니다. 길이가 k인 키의 해시 계산에는 O(k)가 걸립니다. 버킷 확장이 발생한 삽입은 기존 항목 전체를 재배치해야 합니다. `keys()`는 모든 버킷과 항목을 확인하므로 버킷 수를 b라고 하면 O(b + n)입니다.
+
+버킷 테이블과 키 목록에는 배열 용도의 `list`를 사용하며, 키 검색과 충돌 처리는 직접 구현합니다. `dict`, `set`, `collections`는 사용하지 않습니다.
+
+Phase 2 테스트만 실행하려면 다음 명령을 사용합니다.
+
+```bash
+python3 -m unittest tests.test_hash_map -v
+```
+
+읽는 순서는 `_Entry` → `_hash` → `_bucket_index` → `_find_node` → `put`·`get`·`contains`·`remove` → `_resize`를 권장합니다. 확장 전후에 `a`, `e`, `i`, `m`의 버킷 위치가 어떻게 달라지는지 직접 계산해보세요.
