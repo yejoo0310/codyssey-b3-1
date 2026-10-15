@@ -2,7 +2,7 @@
 
 해시맵, 이중 연결 리스트, 최소 힙을 직접 구현하면서 CLI 기반의 메모리 저장소를 만드는 학습 프로젝트입니다.
 
-현재는 **Phase 3: 기본 문자열 저장소 구현**까지 완료한 상태입니다. CLI는 아직 Phase 0의 준비 안내를 출력하며, 명령어 입력은 Phase 4에서 구현합니다.
+현재는 **Phase 4: CLI와 에러 처리 구현**까지 완료한 상태입니다. 터미널에서 기본 명령 6개를 사용할 수 있습니다. 메모리 제한과 LRU는 Phase 5, TTL은 Phase 7에서 추가합니다.
 
 ## 개발 환경과 실행
 
@@ -16,10 +16,20 @@ python3 --version
 python3 main.py
 ```
 
-현재 출력:
+실행 예시:
 
 ```text
-Mini Redis: Phase 0 준비 완료. 명령어 입력은 Phase 4에서 구현합니다.
+mini-redis> SET name "Alice Kim"
+OK
+mini-redis> GET name
+"Alice Kim"
+mini-redis> EXISTS name
+(integer) 1
+mini-redis> DEL name
+(integer) 1
+mini-redis> GET name
+(nil)
+mini-redis> quit
 ```
 
 전체 테스트 실행:
@@ -28,7 +38,7 @@ Mini Redis: Phase 0 준비 완료. 명령어 입력은 Phase 4에서 구현합�
 python3 -m unittest discover -v
 ```
 
-현재 테스트는 `main.py`의 정상 실행, 이중 연결 리스트, 체이닝 해시맵, 기본 문자열 저장소의 동작을 확인합니다. 이후 각 자료구조와 명령어의 테스트를 추가합니다.
+현재 테스트는 자료구조와 저장소, 명령 파싱과 출력, 실제 CLI 프로세스의 동작을 확인합니다. 이후 메모리 제한과 TTL의 테스트를 추가합니다.
 
 ## 파일별 역할
 
@@ -47,6 +57,7 @@ tests/
     test_linked_list.py      이중 연결 리스트 검증
     test_hash_map.py         체이닝 해시맵과 버킷 확장 검증
     test_store.py            기본 저장소 명령 조합 검증
+    test_cli.py              파싱, 명령 실행, 출력 형식 검증
 ```
 
 `main.py`는 실행을 시작하고, `cli.py`는 사용자와의 입출력을 담당합니다. 실제 저장과 삭제는 `store.py`에서 처리하며, 각 자료구조는 독립된 모듈에 둡니다.
@@ -67,7 +78,7 @@ tests/
 
 ### 명령어와 정책
 
-- [x] `SET`, `GET`, `DEL`, `EXISTS`, `DBSIZE`, `KEYS`의 저장소 기능 (CLI 연결은 Phase 4)
+- [x] `SET`, `GET`, `DEL`, `EXISTS`, `DBSIZE`, `KEYS`의 저장소 기능과 CLI 연결
 - [ ] 성공한 `SET`, `GET`에서 LRU 갱신
 - [ ] `CONFIG SET maxmemory bytes`: 0은 무제한
 - [ ] `INFO memory`: `used_memory`, `maxmemory`, `evicted_keys` 출력
@@ -78,9 +89,10 @@ tests/
 - [ ] 키 기반 명령은 만료 여부를 확인하고 만료된 키를 없는 키로 처리
 - [ ] `SET` 덮어쓰기 시 기존 TTL 초기화
 - [ ] 삭제 시 데이터·LRU·TTL·메모리 사용량을 함께 정리
-- [ ] `mini-redis>` REPL, `exit`·`quit` 종료
-- [ ] Redis 스타일 결과와 알 수 없는 명령·인자 개수·정수 파싱·OOM 에러
-- [ ] 최소한 공백 없는 값 입력 지원
+- [x] `mini-redis>` REPL, `exit`·`quit` 종료
+- [x] Redis 스타일 결과와 알 수 없는 명령·인자 개수·닫히지 않은 따옴표 에러
+- [ ] 정수 파싱·OOM 에러 (메모리 제한과 TTL 명령에서 추가)
+- [x] 공백 없는 값과 큰따옴표로 감싼 값 입력 지원
 - [ ] 핵심 클래스와 함수에 주석 또는 docstring 작성
 
 ### 제약과 범위
@@ -120,7 +132,7 @@ tests/
 | 0 이하의 EXPIRE | 존재하는 키를 즉시 삭제하고 1을 반환합니다. |
 | 오래된 TTL 예약 | 지연 삭제를 사용합니다. 고유한 예약 번호로 현재 TTL과 일치하는지 확인하고 오래된 예약은 무시합니다. |
 | 시간 측정 | `time.monotonic`을 기본으로 하고, 테스트에서는 시간 함수를 교체할 수 있게 합니다. |
-| 값 파싱 | 우선 공백 없는 값을 지원하고, 큰따옴표 값 지원은 CLI 단계에서 확장 여부를 결정합니다. |
+| 값 파싱 | 공백으로 인자를 구분하고, 큰따옴표 안의 공백과 빈 문자열을 보존합니다. 큰따옴표 안에서는 `\"`와 `\\`를 각각 따옴표와 역슬래시 하나로 읽습니다. |
 | 명령어 대소문자 | 명령어는 대소문자를 구분하지 않고, 키와 값은 입력 그대로 보존합니다. |
 
 삭제 동작은 공통 경로로 모읍니다. `DEL`, TTL 만료, LRU 제거 모두 데이터·LRU·TTL·메모리를 함께 정리하고, `evicted_keys`는 LRU 제거일 때만 증가시킵니다.
@@ -254,7 +266,7 @@ python3 -m unittest tests.test_hash_map -v
 CLI (Phase 4) → RedisStore → HashMap → 버킷의 연결 리스트
 ```
 
-저장소는 입력 문자열을 명령으로 나누거나 화면에 출력하지 않습니다. `GET`의 `None`을 `(nil)`로 바꾸거나 정수 앞에 `(integer)`를 붙이는 일은 Phase 4의 CLI가 담당합니다. 현재는 Python에서 메서드를 호출해 사용할 수 있습니다.
+저장소는 입력 문자열을 명령으로 나누거나 화면에 출력하지 않습니다. `GET`의 `None`을 `(nil)`로 바꾸거나 정수 앞에 `(integer)`를 붙이는 일은 CLI가 담당합니다. 저장소를 공부할 때는 Python에서 메서드를 직접 호출할 수도 있습니다.
 
 ### 사용 예시
 
@@ -304,3 +316,69 @@ python3 -m unittest discover -v
 저장소 테스트는 덮어쓰기 후 키 개수, 삭제 후 전체 조회, 충돌한 키의 개별 삭제, 해시맵 확장 이후 여러 명령의 조합을 확인합니다. 잘못된 입력을 거부해도 기존 데이터가 유지되는지, 저장소 인스턴스끼리 데이터가 섞이지 않는지도 검증합니다.
 
 읽는 순서는 `RedisStore.__init__` → `set`·`get` → `exists`·`dbsize`·`keys` → `delete`·`_delete_entry`를 권장합니다. 같은 키를 두 번 저장하거나 두 번 삭제할 때 반환값과 키 개수가 어떻게 달라지는지 먼저 예상해보세요.
+
+## Phase 4에서 이해할 내용
+
+REPL은 입력을 읽고(Read), 실행하고(Evaluate), 결과를 출력하는(Print) 과정을 반복(Loop)하는 구조입니다. `main()`이 시작할 때 저장소를 한 번 만들기 때문에 여러 명령 사이에 데이터가 유지됩니다.
+
+```text
+input → parse_command → 명령·인자 개수 확인 → RedisStore → 출력 형식 변환 → print
+  ↑                                                                           |
+  └──────────────────────────── 다음 입력 ──────────────────────────────────────┘
+```
+
+### 입력 규칙
+
+- 명령어는 대소문자를 구분하지 않습니다. `get`, `GET`, `Get`은 같습니다.
+- 키와 값은 대소문자, 한글, 이모지, 앞자리 0 등을 그대로 보존합니다.
+- 공백이나 탭으로 인자를 구분합니다. 큰따옴표 안에서는 공백도 값의 일부입니다.
+- `SET name "Alice Kim"`, `SET empty ""`, `SET "" ""`처럼 입력할 수 있습니다.
+- 큰따옴표 안에서는 `\"`를 따옴표로, `\\`를 역슬래시 하나로 읽습니다. 그 밖의 역슬래시는 그대로 보존하며 `\n`을 실제 개행으로 바꾸지 않습니다.
+- 작은따옴표는 그룹을 묶는 기능이 없으며 일반 문자로 취급합니다.
+- 큰따옴표 앞뒤의 문자열은 한 인자로 이어집니다. `pre" "suffix`는 `pre suffix`입니다.
+- `$HOME`, `$(date)`, `;`, `#` 같은 문자열을 셸 명령이나 주석으로 해석하지 않습니다.
+- 빈 줄은 실행 결과 없이 다음 입력을 받습니다.
+
+파서는 큰따옴표 안인지, 인자가 시작됐는지 따로 기억합니다. 그래서 `""`도 빈 인자 하나로 보존하고, 큰따옴표가 닫히지 않으면 저장소를 호출하기 전에 에러를 반환합니다.
+
+### 실행과 출력의 약속
+
+`execute_command(line, store)`는 명령 한 줄을 실행한 결과를 문자열로 반환합니다. 빈 줄은 `""`, 정상 종료 명령은 `None`을 반환합니다. `main()`은 이 결과에 따라 출력하거나 반복을 끝냅니다.
+
+| 명령 | 인자 개수 | 출력 예시 |
+| --- | --- | --- |
+| `SET key value` | 2 | `OK` |
+| `GET key` | 1 | `"Alice"`, 없는 키는 `(nil)` |
+| `DEL key` | 1 | `(integer) 1` 또는 `(integer) 0` |
+| `EXISTS key` | 1 | `(integer) 1` 또는 `(integer) 0` |
+| `DBSIZE` | 0 | `(integer) 2` |
+| `KEYS` | 0 | `1. "name"`처럼 번호를 붙인 목록, 없으면 `(empty array)` |
+| `exit`, `quit` | 0 | 종료하며 별도 결과는 출력하지 않음 |
+
+문자열은 `json.dumps`로 큰따옴표를 붙이고 내부 따옴표·역슬래시·제어 문자를 이스케이프합니다. 한글은 그대로 출력합니다. 이 함수는 문자열 표현에만 사용하며, 해시맵 저장이나 검색을 대신하지 않습니다. 빈 문자열은 `""`로 출력하고, `None`만 `(nil)`로 처리합니다.
+
+### 에러와 종료
+
+```text
+mini-redis> HELLO
+(error) ERR unknown command 'HELLO'
+mini-redis> GET
+(error) ERR wrong number of arguments for 'GET' command
+mini-redis> SET name "Alice
+(error) ERR unbalanced quotes in request
+```
+
+알 수 없는 명령과 잘못된 인자 수는 저장소를 호출하기 전에 검사합니다. 에러가 나도 프로그램은 다음 입력을 받고 기존 데이터는 유지됩니다. `quit extra`처럼 종료 명령에 인자를 붙이면 종료하지 않고 인자 오류를 출력합니다.
+
+`exit`·`quit` 외에 Ctrl+D로 입력을 끝내거나 Ctrl+C를 눌러도 traceback 없이 종료합니다. 입력을 파이프로 전달한 경우에도 마지막 입력 후 정상 종료합니다. CONFIG·INFO·EXPIRE·TTL은 아직 지원하지 않으므로 현재는 알 수 없는 명령으로 처리합니다.
+
+### 검증 방법
+
+```bash
+python3 -m unittest tests.test_cli tests.test_startup -v
+python3 -m unittest discover -v
+```
+
+단위 테스트는 파싱과 출력, 인자 검증, 에러 이후 데이터 보존을 확인합니다. 별도 프로세스로 실행하는 테스트는 프롬프트, 여러 명령 간 데이터 유지, 에러 복구, 빈 입력, quit·exit·입력 종료를 검증합니다.
+
+읽는 순서는 `main` → `parse_command` → `execute_command`의 인자 검사 → 명령별 실행 → `_quote_string`을 권장합니다. 빈 값이 빈 입력과 어떻게 구분되는지, 잘못된 입력이 저장소에 도달하기 전에 어디서 차단되는지 따라가보세요.
