@@ -92,6 +92,40 @@ class StartupTests(unittest.TestCase):
             'mini-redis> ',
         )
 
+    def test_all_commands_with_unicode_and_memory_management(self):
+        output = self.run_cli(
+            'CONFIG SET maxmemory 8\nSET 가 "🔑"\nGET 가\nEXISTS 가\n'
+            'EXPIRE 가 100\nSET 가 나\nTTL 가\nSET a 1\nSET b 2\n'
+            'GET 가\nGET a\nGET b\nDBSIZE\nKEYS\nINFO memory\n'
+            'EXPIRE b 0\nDEL a\nDBSIZE\nKEYS\nINFO memory\nquit\n'
+        )
+        prefix, keys_and_rest = output.split('mini-redis> (integer) 2\n', 1)
+        self.assertEqual(
+            prefix,
+            'mini-redis> OK\nmini-redis> OK\nmini-redis> "🔑"\n'
+            'mini-redis> (integer) 1\nmini-redis> (integer) 1\n'
+            'mini-redis> OK\nmini-redis> (integer) -1\n'
+            'mini-redis> OK\nmini-redis> OK\nmini-redis> (nil)\n'
+            'mini-redis> "1"\nmini-redis> "2"\n',
+        )
+        key_output, rest = keys_and_rest.split('mini-redis> used_memory:', 1)
+        lines = key_output.splitlines()
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[0].startswith('mini-redis> 1. '))
+        self.assertTrue(lines[1].startswith('2. '))
+        self.assertCountEqual(
+            [lines[0][len('mini-redis> 1. '):], lines[1][len('2. '):]],
+            ['"a"', '"b"'],
+        )
+        self.assertEqual(
+            rest,
+            '4\nmaxmemory:8\nevicted_keys:1\n'
+            'mini-redis> (integer) 1\nmini-redis> (integer) 1\n'
+            'mini-redis> (integer) 0\nmini-redis> (empty array)\n'
+            'mini-redis> used_memory:0\nmaxmemory:8\nevicted_keys:1\n'
+            'mini-redis> ',
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
