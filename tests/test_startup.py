@@ -76,6 +76,22 @@ class StartupTests(unittest.TestCase):
             'mini-redis> ',
         )
 
+    def test_ttl_commands_and_error_recovery(self):
+        output = self.run_cli(
+            "SET a 1\nTTL a\nEXPIRE a 100\nSET a 2\nTTL a\n"
+            "EXPIRE a abc\nGET a\nEXPIRE a 0\nTTL a\nGET a\nINFO memory\nquit\n"
+        )
+        self.assertEqual(
+            output,
+            'mini-redis> OK\nmini-redis> (integer) -1\n'
+            'mini-redis> (integer) 1\nmini-redis> OK\nmini-redis> (integer) -1\n'
+            'mini-redis> (error) ERR value is not an integer or out of range\n'
+            'mini-redis> "2"\nmini-redis> (integer) 1\n'
+            'mini-redis> (integer) -2\nmini-redis> (nil)\n'
+            'mini-redis> used_memory:0\nmaxmemory:0\nevicted_keys:0\n'
+            'mini-redis> ',
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

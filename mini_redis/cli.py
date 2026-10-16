@@ -16,6 +16,8 @@ _COMMAND_ARITIES = (
     ("KEYS", 0),
     ("CONFIG", 3),
     ("INFO", 1),
+    ("EXPIRE", 2),
+    ("TTL", 1),
     ("EXIT", 0),
     ("QUIT", 0),
 )
@@ -66,12 +68,17 @@ def _quote_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _parse_memory_limit(value: str) -> int:
-    """0 이상의 십진 정수를 읽는다. 밑줄이나 소수점은 허용하지 않는다."""
+def _parse_integer(value: str) -> int:
+    """부호가 있는 십진 정수를 읽는다. 밑줄이나 소수점은 허용하지 않는다."""
     digits = value[1:] if value.startswith(("+", "-")) else value
     if not digits or not digits.isascii() or not digits.isdecimal():
         raise ValueError("value is not an integer or out of range")
-    limit = int(value)
+    return int(value)
+
+
+def _parse_memory_limit(value: str) -> int:
+    """메모리 제한에 사용할 0 이상의 정수를 읽는다."""
+    limit = _parse_integer(value)
     if limit < 0:
         raise ValueError("value is not an integer or out of range")
     return limit
@@ -115,6 +122,15 @@ def execute_command(line: str, store: RedisStore) -> Optional[str]:
         return "(integer) {}".format(store.exists(tokens[1]))
     if command == "DBSIZE":
         return "(integer) {}".format(store.dbsize())
+    if command == "EXPIRE":
+        try:
+            seconds = _parse_integer(tokens[2])
+            result = store.expire(tokens[1], seconds)
+        except ValueError:
+            return "(error) ERR value is not an integer or out of range"
+        return "(integer) {}".format(result)
+    if command == "TTL":
+        return "(integer) {}".format(store.ttl(tokens[1]))
     if command == "CONFIG":
         if tokens[1].upper() != "SET" or tokens[2].lower() != "maxmemory":
             return "(error) ERR unsupported CONFIG option"
