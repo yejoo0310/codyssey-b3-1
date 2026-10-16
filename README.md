@@ -2,7 +2,7 @@
 
 해시맵, 이중 연결 리스트, 최소 힙을 직접 구현하면서 CLI 기반의 메모리 저장소를 만드는 학습 프로젝트입니다.
 
-현재는 **Phase 4: CLI와 에러 처리 구현**까지 완료한 상태입니다. 터미널에서 기본 명령 6개를 사용할 수 있습니다. 메모리 제한과 LRU는 Phase 5, TTL은 Phase 7에서 추가합니다.
+현재는 **Phase 5: LRU와 메모리 제한 구현**까지 완료한 상태입니다. 기본 명령 6개와 메모리 관리 명령 2개를 사용할 수 있습니다. TTL은 Phase 7에서 추가합니다.
 
 ## 개발 환경과 실행
 
@@ -38,7 +38,7 @@ mini-redis> quit
 python3 -m unittest discover -v
 ```
 
-현재 테스트는 자료구조와 저장소, 명령 파싱과 출력, 실제 CLI 프로세스의 동작을 확인합니다. 이후 메모리 제한과 TTL의 테스트를 추가합니다.
+현재 테스트는 자료구조와 저장소, LRU와 메모리 제한, 명령 파싱과 출력, 실제 CLI 프로세스의 동작을 확인합니다. 이후 TTL의 테스트를 추가합니다.
 
 ## 파일별 역할
 
@@ -58,6 +58,7 @@ tests/
     test_hash_map.py         체이닝 해시맵과 버킷 확장 검증
     test_store.py            기본 저장소 명령 조합 검증
     test_cli.py              파싱, 명령 실행, 출력 형식 검증
+    test_memory.py           LRU, 메모리 계산, 자동 제거 검증
 ```
 
 `main.py`는 실행을 시작하고, `cli.py`는 사용자와의 입출력을 담당합니다. 실제 저장과 삭제는 `store.py`에서 처리하며, 각 자료구조는 독립된 모듈에 둡니다.
@@ -79,19 +80,20 @@ tests/
 ### 명령어와 정책
 
 - [x] `SET`, `GET`, `DEL`, `EXISTS`, `DBSIZE`, `KEYS`의 저장소 기능과 CLI 연결
-- [ ] 성공한 `SET`, `GET`에서 LRU 갱신
-- [ ] `CONFIG SET maxmemory bytes`: 0은 무제한
-- [ ] `INFO memory`: `used_memory`, `maxmemory`, `evicted_keys` 출력
-- [ ] 메모리 사용량은 모든 키와 값의 UTF-8 바이트 수 합계로 계산
-- [ ] `SET` 후 제한 초과 시 LRU 순서로 제거
-- [ ] 단일 엔트리가 제한보다 크면 저장하지 않고 OOM 출력
+- [x] 성공한 `SET`, `GET`에서 LRU 갱신
+- [x] `CONFIG SET maxmemory bytes`: 0은 무제한
+- [x] `INFO memory`: `used_memory`, `maxmemory`, `evicted_keys` 출력
+- [x] 메모리 사용량은 모든 키와 값의 UTF-8 바이트 수 합계로 계산
+- [x] `SET` 후 제한 초과 시 LRU 순서로 제거
+- [x] 단일 엔트리가 제한보다 크면 저장하지 않고 OOM 출력
 - [ ] `EXPIRE`, `TTL`: 없는 키는 TTL -2, 만료 설정 없는 키는 -1
 - [ ] 키 기반 명령은 만료 여부를 확인하고 만료된 키를 없는 키로 처리
 - [ ] `SET` 덮어쓰기 시 기존 TTL 초기화
-- [ ] 삭제 시 데이터·LRU·TTL·메모리 사용량을 함께 정리
+- [x] 삭제 시 데이터·LRU·메모리 사용량을 함께 정리
+- [ ] 삭제 시 TTL 정보도 함께 정리
 - [x] `mini-redis>` REPL, `exit`·`quit` 종료
 - [x] Redis 스타일 결과와 알 수 없는 명령·인자 개수·닫히지 않은 따옴표 에러
-- [ ] 정수 파싱·OOM 에러 (메모리 제한과 TTL 명령에서 추가)
+- [x] 메모리 제한의 정수 파싱·OOM 에러
 - [x] 공백 없는 값과 큰따옴표로 감싼 값 입력 지원
 - [ ] 핵심 클래스와 함수에 주석 또는 docstring 작성
 
@@ -300,11 +302,11 @@ print(store.delete("name"))        # 0
 
 `del`은 Python 예약어이므로 메서드 이름은 `delete`로 정했습니다. 해시맵의 `remove`와 `contains`가 반환하는 참·거짓은 `int`로 변환해 명령에 맞는 정수 결과를 만듭니다.
 
-해시맵은 다양한 값을 받을 수 있지만 저장소는 문자열만 허용합니다. 잘못된 값은 저장 전에 `TypeError`로 거부하고, 키의 문자열 검사는 해시맵을 재사용합니다. 숫자처럼 보이는 `"001"`도 그대로 보존하며, 빈 문자열과 한글도 저장할 수 있습니다. 값이 빈 문자열이어도 키는 존재합니다.
+해시맵은 다양한 값을 받을 수 있지만 저장소는 문자열만 허용합니다. 잘못된 값은 저장 전에 `TypeError`로 거부합니다. Phase 5부터 SET은 바이트 수를 계산하기 전에 키 타입도 검사하며, 다른 키 기반 명령은 해시맵의 검사를 재사용합니다. 숫자처럼 보이는 `"001"`도 그대로 보존하며, 빈 문자열과 한글도 저장할 수 있습니다. 값이 빈 문자열이어도 키는 존재합니다.
 
 ### 공통 삭제 경로
 
-`delete()`는 `_delete_entry()`를 호출합니다. 실제 데이터 삭제를 이곳에 모아 두었으므로, 이후 TTL 만료와 LRU 제거도 같은 경로에서 처리하도록 확장할 수 있습니다. 현재는 해시맵에서 키를 삭제하는 역할만 합니다. LRU·메모리 제한은 Phase 5, TTL은 Phase 7에서 구현합니다.
+`delete()`는 `_delete_entry()`를 호출합니다. Phase 3에서는 해시맵 삭제만 담당했고, Phase 5에서는 LRU 노드와 메모리 사용량도 함께 정리하도록 확장했습니다. TTL 정리는 Phase 7에서 같은 경로에 추가합니다.
 
 ### 검증 방법
 
@@ -370,7 +372,7 @@ mini-redis> SET name "Alice
 
 알 수 없는 명령과 잘못된 인자 수는 저장소를 호출하기 전에 검사합니다. 에러가 나도 프로그램은 다음 입력을 받고 기존 데이터는 유지됩니다. `quit extra`처럼 종료 명령에 인자를 붙이면 종료하지 않고 인자 오류를 출력합니다.
 
-`exit`·`quit` 외에 Ctrl+D로 입력을 끝내거나 Ctrl+C를 눌러도 traceback 없이 종료합니다. 입력을 파이프로 전달한 경우에도 마지막 입력 후 정상 종료합니다. CONFIG·INFO·EXPIRE·TTL은 아직 지원하지 않으므로 현재는 알 수 없는 명령으로 처리합니다.
+`exit`·`quit` 외에 Ctrl+D로 입력을 끝내거나 Ctrl+C를 눌러도 traceback 없이 종료합니다. 입력을 파이프로 전달한 경우에도 마지막 입력 후 정상 종료합니다. Phase 5에서 CONFIG SET maxmemory와 INFO memory를 추가했으며, EXPIRE·TTL은 아직 알 수 없는 명령으로 처리합니다.
 
 ### 검증 방법
 
@@ -382,3 +384,100 @@ python3 -m unittest discover -v
 단위 테스트는 파싱과 출력, 인자 검증, 에러 이후 데이터 보존을 확인합니다. 별도 프로세스로 실행하는 테스트는 프롬프트, 여러 명령 간 데이터 유지, 에러 복구, 빈 입력, quit·exit·입력 종료를 검증합니다.
 
 읽는 순서는 `main` → `parse_command` → `execute_command`의 인자 검사 → 명령별 실행 → `_quote_string`을 권장합니다. 빈 값이 빈 입력과 어떻게 구분되는지, 잘못된 입력이 저장소에 도달하기 전에 어디서 차단되는지 따라가보세요.
+
+## Phase 5에서 이해할 내용
+
+LRU는 가장 오래 사용하지 않은 키부터 제거하는 정책입니다. 저장소가 키를 담은 이중 연결 리스트를 별도로 유지하고, 맨 앞을 최근 사용, 맨 뒤를 제거 대상으로 정합니다.
+
+```text
+해시맵: key → _StoredEntry(value, memory_size, lru_node)
+                                               |
+                                               ↓
+LRU: [최근 사용한 키] <-> ... <-> [오래 사용하지 않은 키]
+```
+
+해시맵의 값이 문자열에서 `_StoredEntry` 객체로 바뀌었습니다. 저장된 문자열과 바이트 수, 해당 키의 LRU 노드 참조를 함께 보관합니다. 외부의 `get()`은 이 객체의 value만 반환하므로 기존 저장소 사용법은 같습니다.
+
+### 언제 사용 순서를 바꾸는가?
+
+- 새 키를 SET하면 LRU 맨 앞에 넣습니다.
+- 기존 키를 SET하거나 GET에 성공하면 같은 노드를 맨 앞으로 옮깁니다.
+- GET이 빈 문자열을 반환해도 성공이므로 순서를 갱신합니다.
+- 없는 키의 GET과 EXISTS·DBSIZE·KEYS·INFO는 순서를 바꾸지 않습니다.
+- 메모리 제한이 없어도 순서를 추적해, 나중에 제한을 설정했을 때 활용합니다.
+
+항목이 LRU 노드를 직접 참조하므로 이동할 노드를 리스트에서 검색하지 않습니다. 노드 이동은 O(1)이며, 키를 찾는 해시맵 비용은 별도로 적용됩니다. 버킷 체이닝 노드와 LRU 노드는 서로 다른 노드입니다.
+
+### 메모리 계산과 삭제
+
+```text
+항목 크기 = len(key.encode("utf-8")) + len(value.encode("utf-8"))
+used_memory = 모든 항목 크기의 합계
+```
+
+`a`와 `가`를 저장하면 1 + 3 = 4바이트입니다. 따옴표 같은 입력 문법과 자료구조의 노드·버킷 비용은 계산하지 않습니다. 실제 Python 프로세스의 메모리 사용량과는 다릅니다.
+
+덮어쓰기에서는 `새 크기 - 기존 크기`만 사용량에 반영합니다. 삭제할 때는 저장해 둔 크기를 빼고 LRU 노드도 분리합니다. LRU 자동 제거일 때만 `evicted_keys`를 1 늘립니다. DEL은 이 수치를 늘리지 않습니다.
+
+### 새 명령어
+
+```text
+mini-redis> CONFIG SET maxmemory 4
+OK
+mini-redis> SET a 1
+OK
+mini-redis> SET b 2
+OK
+mini-redis> GET a
+"1"
+mini-redis> SET c 3
+OK
+mini-redis> GET b
+(nil)
+mini-redis> INFO memory
+used_memory:4
+maxmemory:4
+evicted_keys:1
+```
+
+각 항목이 2바이트입니다. a를 조회하면 b보다 최근 사용한 키가 되므로 c를 저장할 때 b가 제거됩니다. 한 번의 SET으로도 제한을 맞출 때까지 여러 키를 제거할 수 있습니다.
+
+`CONFIG SET maxmemory bytes`는 0 이상의 십진 정수를 받습니다. `+4`처럼 부호를 붙일 수 있고 0은 무제한입니다. 음수, 소수, 밑줄, 16진수, 숫자가 아닌 문자열은 표준 정수 에러로 처리합니다. 큰따옴표로 감싼 숫자 안의 추가 공백도 허용하지 않습니다. 명령과 SET·maxmemory·memory 이름은 대소문자를 구분하지 않습니다.
+
+제한을 현재 사용량보다 낮추더라도 바로 제거하지 않습니다. 다음 성공한 SET에서 새 사용량을 계산한 뒤 제거합니다. 따라서 제한을 낮춘 직후에는 INFO의 used_memory가 maxmemory보다 클 수 있습니다. 0으로 바꿔도 누적 제거 횟수는 유지됩니다.
+
+단일 항목 자체가 제한을 초과하면 저장 전에 OOM으로 거부합니다.
+
+```text
+mini-redis> SET a 12345
+(error) OOM command not allowed when used_memory > 'maxmemory'
+```
+
+실패한 SET은 기존 값·키 개수·사용량·LRU 순서·제거 횟수를 바꾸지 않습니다. 기존 키를 덮어쓰다가 실패한 경우도 원래 값이 남습니다. LRU 맨 뒤부터 제거하는 작업은 유효한 SET으로 값을 반영한 후에만 실행합니다.
+
+### Python에서 확인하기
+
+```python
+from mini_redis.store import RedisStore
+
+store = RedisStore()
+store.config_set_maxmemory(10)
+store.set("가", "🔑")
+info = store.info_memory()
+print(info.used_memory)   # 7
+print(info.maxmemory)     # 10
+print(info.evicted_keys)  # 0
+```
+
+`MemoryInfo`는 세 숫자를 이름으로 읽을 수 있는 NamedTuple입니다. CLI는 그 결과를 받아 INFO 형식의 문자열로 출력합니다. 저장소에서 항목 하나가 너무 크면 `OutOfMemoryError`를 발생시키고, CLI가 이를 OOM 출력으로 변환합니다.
+
+### 검증 방법
+
+```bash
+python3 -m unittest tests.test_memory tests.test_cli.MemoryCommandTests -v
+python3 -m unittest discover -v
+```
+
+Phase 5 완료 시 전체 85개 테스트가 통과합니다. LRU 순서와 해시맵의 키 목록·개수, 메모리 통계를 함께 검증하며, 해시맵이 확장된 뒤에도 LRU 노드 참조가 유지되는지 확인합니다. 실제 CLI 프로세스에서도 자동 제거, OOM·정수 에러 이후의 복구를 확인합니다.
+
+읽는 순서는 `_StoredEntry` → `RedisStore.set`·`get` → `_delete_entry` → `_evict_if_needed` → `config_set_maxmemory`·`info_memory` → CLI의 새 명령 분기를 권장합니다. 항목 크기와 사용 순서를 종이에 적고 어떤 키가 먼저 제거될지 예상해보세요.

@@ -142,5 +142,87 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(output.getvalue(), "\n")
 
 
+class MemoryCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.store = RedisStore()
+
+    def execute(self, line):
+        return execute_command(line, self.store)
+
+    def test_requirement_memory_example(self):
+        self.assertEqual(self.execute("CONFIG SET maxmemory 30"), "OK")
+        for line in ('SET user:1 "Alice"', 'SET user:2 "Bob"', 'SET user:3 "Charlie"'):
+            self.assertEqual(self.execute(line), "OK")
+        self.assertEqual(self.execute("GET user:1"), "(nil)")
+        self.assertEqual(
+            self.execute("INFO memory"),
+            "used_memory:22\nmaxmemory:30\nevicted_keys:1",
+        )
+
+    def test_memory_subcommands_ignore_case(self):
+        self.assertEqual(self.execute("config set MAXMEMORY +4"), "OK")
+        self.execute("SET a 1")
+        self.assertEqual(
+            self.execute("iNfO MeMoRy"),
+            "used_memory:2\nmaxmemory:4\nevicted_keys:0",
+        )
+        self.assertEqual(self.execute("CONFIG SET maxmemory -0"), "OK")
+        self.assertEqual(self.store.info_memory().maxmemory, 0)
+
+    def test_invalid_integer_does_not_change_limit(self):
+        self.execute("CONFIG SET maxmemory 10")
+        self.execute("SET kept value")
+        for value in ("abc", "-1", "1.5", "1_000", "0x10", "１２", '""', '" 2 "', "+"):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self.execute("CONFIG SET maxmemory " + value),
+                    "(error) ERR value is not an integer or out of range",
+                )
+                self.assertEqual(self.store.info_memory(), (9, 10, 0))
+                self.assertEqual(self.store.exists("kept"), 1)
+
+    def test_memory_command_arity(self):
+        for line, command in (
+            ("CONFIG", "CONFIG"), ("CONFIG SET maxmemory", "CONFIG"),
+            ("CONFIG SET maxmemory 10 extra", "CONFIG"),
+            ("INFO", "INFO"), ("INFO memory extra", "INFO"),
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(
+                    self.execute(line),
+                    "(error) ERR wrong number of arguments for '{}' command".format(command),
+                )
+                self.assertEqual(self.store.info_memory(), (0, 0, 0))
+
+    def test_unsupported_memory_options(self):
+        for line in ("CONFIG GET maxmemory 1", "CONFIG SET other 1"):
+            with self.subTest(line=line):
+                self.assertEqual(self.execute(line), "(error) ERR unsupported CONFIG option")
+        self.assertEqual(self.execute("INFO other"), "(error) ERR unsupported INFO section")
+        self.assertEqual(self.store.info_memory(), (0, 0, 0))
+
+    def test_oom_and_recovery(self):
+        self.execute("CONFIG SET maxmemory 4")
+        self.execute("SET a 1")
+        self.execute("SET b 2")
+        for line in ("SET a 12345", "SET new value"):
+            with self.subTest(line=line):
+                self.assertEqual(
+                    self.execute(line),
+                    "(error) OOM command not allowed when used_memory > 'maxmemory'",
+                )
+        self.assertEqual(self.execute("SET c 3"), "OK")
+        self.assertEqual(self.execute("GET a"), "(nil)")
+        self.assertEqual(self.execute("GET b"), '"2"')
+        self.assertEqual(self.store.info_memory(), (4, 4, 1))
+
+    def test_quoted_unicode_size_uses_stored_text(self):
+        self.execute("CONFIG SET maxmemory 7")
+        self.assertEqual(self.execute('SET 가 "🔑"'), "OK")
+        self.assertEqual(self.store.info_memory(), (7, 7, 0))
+        self.assertEqual(self.execute("DEL 가"), "(integer) 1")
+        self.assertEqual(self.store.info_memory(), (0, 7, 0))
+
+
 if __name__ == "__main__":
     unittest.main()

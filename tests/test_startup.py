@@ -58,6 +58,24 @@ class StartupTests(unittest.TestCase):
             "mini-redis> mini-redis> mini-redis> (integer) 0\nmini-redis> ",
         )
 
+    def test_memory_limit_eviction_and_oom_recovery(self):
+        output = self.run_cli(
+            "CONFIG SET maxmemory 4\nSET a 1\nSET b 2\nGET a\n"
+            "SET c 3\nGET b\nSET a 12345\nINFO memory\n"
+            "CONFIG SET maxmemory abc\nDEL c\nINFO memory\nquit\n"
+        )
+        self.assertEqual(
+            output,
+            'mini-redis> OK\nmini-redis> OK\nmini-redis> OK\n'
+            'mini-redis> "1"\nmini-redis> OK\nmini-redis> (nil)\n'
+            "mini-redis> (error) OOM command not allowed when used_memory > 'maxmemory'\n"
+            'mini-redis> used_memory:4\nmaxmemory:4\nevicted_keys:1\n'
+            'mini-redis> (error) ERR value is not an integer or out of range\n'
+            'mini-redis> (integer) 1\n'
+            'mini-redis> used_memory:2\nmaxmemory:4\nevicted_keys:1\n'
+            'mini-redis> ',
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
