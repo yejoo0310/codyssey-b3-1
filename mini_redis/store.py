@@ -2,7 +2,7 @@
 
 import math
 import time
-from typing import Callable, List, NamedTuple, Optional, Tuple
+from typing import List, NamedTuple, Optional
 
 from mini_redis.hash_map import HashMap
 from mini_redis.linked_list import DoublyLinkedList, Node
@@ -35,14 +35,13 @@ class _StoredEntry:
 class RedisStore:
     """기본 명령의 결과를 반환한다. 입력 해석과 화면 출력은 CLI가 맡는다."""
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self) -> None:
         self._data = HashMap()
         self._lru = DoublyLinkedList()
         self._used_memory = 0
         self._maxmemory = 0
         self._evicted_keys = 0
-        self._clock = clock
-        self._expiry_heap: MinHeap[Tuple[float, str, int]] = MinHeap()
+        self._expiry_heap: MinHeap = MinHeap()
         self._next_expiry_id = 0
 
     def set(self, key: str, value: str) -> str:
@@ -104,7 +103,7 @@ class RedisStore:
         """만료 시간을 설정한다. 0 이하는 즉시 삭제하며, 없는 키이면 0이다."""
         if not isinstance(seconds, int) or isinstance(seconds, bool):
             raise ValueError("value is not an integer or out of range")
-        now = self._clock()
+        now = time.monotonic()
         entry = self._get_live_entry(key, now)
         if entry is None:
             return 0
@@ -128,7 +127,7 @@ class RedisStore:
 
     def ttl(self, key: str) -> int:
         """남은 초를 내림해 반환한다. 없는 키는 -2, 만료 설정이 없으면 -1이다."""
-        now = self._clock()
+        now = time.monotonic()
         entry = self._get_live_entry(key, now)
         if entry is None:
             return -2
@@ -162,7 +161,7 @@ class RedisStore:
     def _expire_due(self, now: Optional[float] = None) -> None:
         """힙에서 만료된 예약을 꺼내며, 현재도 유효한 예약의 키만 삭제한다."""
         if now is None:
-            now = self._clock()
+            now = time.monotonic()
         while True:
             reservation = self._expiry_heap.peek()
             if reservation is None or reservation[0] > now:

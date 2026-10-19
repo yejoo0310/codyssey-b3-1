@@ -1,12 +1,9 @@
 """부모가 자식보다 크지 않도록 배열을 관리하는 최소 힙."""
 
-from typing import Generic, List, Optional, TypeVar
+from typing import Any, List, Optional
 
 
-T = TypeVar("T")
-
-
-class MinHeap(Generic[T]):
+class MinHeap:
     """서로 <로 비교할 수 있는 항목을 저장하고 가장 작은 항목부터 꺼낸다.
 
     TTL 예약에는 (만료 시각, 키) 튜플을 사용할 수 있다.
@@ -14,7 +11,7 @@ class MinHeap(Generic[T]):
     """
 
     def __init__(self) -> None:
-        self._items: List[T] = []
+        self._items: List[Any] = []
 
     def size(self) -> int:
         """저장된 항목 개수를 반환한다."""
@@ -24,18 +21,18 @@ class MinHeap(Generic[T]):
         """len으로도 항목 개수를 확인할 수 있다."""
         return self.size()
 
-    def peek(self) -> Optional[T]:
+    def peek(self) -> Optional[Any]:
         """최솟값을 삭제하지 않고 확인한다. 비어 있으면 None을 반환한다."""
         if not self._items:
             return None
         return self._items[0]
 
-    def push(self, item: T) -> None:
+    def push(self, item: Any) -> None:
         """맨 뒤에 항목을 추가하고 부모와 비교하며 위로 올린다."""
         self._items.append(item)
         self._heapify_up(len(self._items) - 1)
 
-    def pop(self) -> Optional[T]:
+    def pop(self) -> Optional[Any]:
         """최솟값을 꺼내고 남은 항목을 정리한다. 비어 있으면 None을 반환한다."""
         if not self._items:
             return None

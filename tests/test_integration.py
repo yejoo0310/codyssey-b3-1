@@ -1,6 +1,7 @@
 """명령을 조합한 뒤 자료구조와 메모리·TTL 상태의 일관성을 검증한다."""
 
 import unittest
+from unittest.mock import patch
 
 from mini_redis.cli import execute_command
 from mini_redis.store import RedisStore
@@ -10,7 +11,10 @@ from tests.helpers import ManualClock
 class IntegrationTests(unittest.TestCase):
     def setUp(self):
         self.clock = ManualClock()
-        self.store = RedisStore(clock=self.clock)
+        clock_patch = patch("mini_redis.store.time.monotonic", self.clock)
+        clock_patch.start()
+        self.addCleanup(clock_patch.stop)
+        self.store = RedisStore()
 
     def assert_state(self, expected, limit, evicted):
         """추가 명령을 실행하지 않고 키·값·LRU·TTL·사용량을 함께 확인한다."""

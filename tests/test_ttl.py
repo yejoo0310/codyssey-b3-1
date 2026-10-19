@@ -1,6 +1,7 @@
 """TTL 재설정과 만료 시점, LRU·메모리 관리와의 조합을 검증한다."""
 
 import unittest
+from unittest.mock import patch
 
 from mini_redis.store import OutOfMemoryError, RedisStore
 from tests.helpers import ManualClock
@@ -9,7 +10,10 @@ from tests.helpers import ManualClock
 class TTLTests(unittest.TestCase):
     def setUp(self):
         self.clock = ManualClock()
-        self.store = RedisStore(clock=self.clock)
+        clock_patch = patch("mini_redis.store.time.monotonic", self.clock)
+        clock_patch.start()
+        self.addCleanup(clock_patch.stop)
+        self.store = RedisStore()
 
     def test_missing_and_persistent_keys(self):
         self.assertEqual(self.store.ttl("missing"), -2)
@@ -45,8 +49,8 @@ class TTLTests(unittest.TestCase):
     def test_key_commands_treat_expired_key_as_missing(self):
         for command, expected in (("get", None), ("exists", 0), ("delete", 0), ("ttl", -2), ("expire", 0)):
             with self.subTest(command=command):
-                clock = ManualClock()
-                store = RedisStore(clock=clock)
+                clock = self.clock
+                store = RedisStore()
                 store.set("a", "1")
                 store.expire("a", 1)
                 clock.advance(1)
@@ -59,8 +63,8 @@ class TTLTests(unittest.TestCase):
     def test_global_queries_clean_unaccessed_expired_keys(self):
         for command in ("dbsize", "keys", "info_memory"):
             with self.subTest(command=command):
-                clock = ManualClock()
-                store = RedisStore(clock=clock)
+                clock = self.clock
+                store = RedisStore()
                 store.set("a", "1")
                 store.set("b", "2")
                 store.expire("a", 1)

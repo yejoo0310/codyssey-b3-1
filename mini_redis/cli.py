@@ -6,7 +6,7 @@ from typing import List, Optional
 from mini_redis.store import OutOfMemoryError, RedisStore
 
 
-# 명령어별 인자 개수. 이후 Phase의 명령도 이곳에 추가한다.
+# 명령어별 인자 개수.
 _COMMAND_ARITIES = (
     ("SET", 2),
     ("GET", 1),

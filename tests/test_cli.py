@@ -228,7 +228,10 @@ class MemoryCommandTests(unittest.TestCase):
 class TTLCommandTests(unittest.TestCase):
     def setUp(self):
         self.clock = ManualClock()
-        self.store = RedisStore(clock=self.clock)
+        clock_patch = patch("mini_redis.store.time.monotonic", self.clock)
+        clock_patch.start()
+        self.addCleanup(clock_patch.stop)
+        self.store = RedisStore()
 
     def execute(self, line):
         return execute_command(line, self.store)
