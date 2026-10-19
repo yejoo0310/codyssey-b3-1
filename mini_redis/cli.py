@@ -1,6 +1,6 @@
 """명령을 해석하고 저장소의 결과를 Redis 스타일로 출력한다."""
 
-import json
+import shlex
 from typing import List, Optional
 
 from mini_redis.store import OutOfMemoryError, RedisStore
@@ -24,61 +24,18 @@ _COMMAND_ARITIES = (
 
 
 def parse_command(line: str) -> List[str]:
-    """공백으로 인자를 나누되, 큰따옴표 안의 공백과 빈 문자열은 보존한다."""
-    tokens = []
-    characters = []
-    in_quotes = False
-    token_started = False
-    index = 0
-
-    while index < len(line):
-        character = line[index]
-        if (
-            character == "\\"
-            and in_quotes
-            and index + 1 < len(line)
-            and line[index + 1] in ('"', "\\")
-        ):
-            # 큰따옴표 안의 \"와 \\는 해당 문자 하나로 읽는다.
-            characters.append(line[index + 1])
-            index += 2
-            continue
-        if character == '"':
-            in_quotes = not in_quotes
-            token_started = True
-        elif character.isspace() and not in_quotes:
-            if token_started:
-                tokens.append("".join(characters))
-                characters = []
-                token_started = False
-        else:
-            characters.append(character)
-            token_started = True
-        index += 1
-
-    if in_quotes:
-        raise ValueError("unbalanced quotes in request")
-    if token_started:
-        tokens.append("".join(characters))
-    return tokens
+    """shlex로 인자를 나누고 따옴표 안의 공백과 빈 문자열을 보존한다."""
+    return shlex.split(line)
 
 
 def _quote_string(value: str) -> str:
-    """문자열을 큰따옴표로 감싸고 따옴표·개행 등을 안전하게 표시한다."""
-    return json.dumps(value, ensure_ascii=False)
-
-
-def _parse_integer(value: str) -> int:
-    """부호가 있는 십진 정수를 읽는다. 밑줄이나 소수점은 허용하지 않는다."""
-    digits = value[1:] if value.startswith(("+", "-")) else value
-    if not digits or not digits.isascii() or not digits.isdecimal():
-        raise ValueError("value is not an integer or out of range")
-    return int(value)
+    """출력할 문자열을 큰따옴표로 감싼다."""
+    return f'"{value}"'
 
 
 def _parse_memory_limit(value: str) -> int:
     """메모리 제한에 사용할 0 이상의 정수를 읽는다."""
-    limit = _parse_integer(value)
+    limit = int(value)
     if limit < 0:
         raise ValueError("value is not an integer or out of range")
     return limit
@@ -124,7 +81,7 @@ def execute_command(line: str, store: RedisStore) -> Optional[str]:
         return "(integer) {}".format(store.dbsize())
     if command == "EXPIRE":
         try:
-            seconds = _parse_integer(tokens[2])
+            seconds = int(tokens[2])
             result = store.expire(tokens[1], seconds)
         except ValueError:
             return "(error) ERR value is not an integer or out of range"
@@ -143,9 +100,7 @@ def execute_command(line: str, store: RedisStore) -> Optional[str]:
         if tokens[1].lower() != "memory":
             return "(error) ERR unsupported INFO section"
         info = store.info_memory()
-        return "used_memory:{}\nmaxmemory:{}\nevicted_keys:{}".format(
-            info.used_memory, info.maxmemory, info.evicted_keys
-        )
+        return f"used_memory:{info.used_memory} maxmemory:{info.maxmemory} evicted_keys:{info.evicted_keys}"
 
     keys = store.keys()
     if not keys:

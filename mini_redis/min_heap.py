@@ -17,10 +17,6 @@ class MinHeap:
         """저장된 항목 개수를 반환한다."""
         return len(self._items)
 
-    def __len__(self) -> int:
-        """len으로도 항목 개수를 확인할 수 있다."""
-        return self.size()
-
     def peek(self) -> Optional[Any]:
         """최솟값을 삭제하지 않고 확인한다. 비어 있으면 None을 반환한다."""
         if not self._items:

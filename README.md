@@ -152,7 +152,7 @@ mini-redis> CONFIG SET maxmemory -1
 mini-redis> EXPIRE key 1.5
 (error) ERR value is not an integer or out of range
 mini-redis> SET key "unfinished
-(error) ERR unbalanced quotes in request
+(error) ERR No closing quotation
 ```
 
 ## 구현 구조

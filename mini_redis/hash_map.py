@@ -21,17 +21,10 @@ class HashMap:
     """
 
     def __init__(self, initial_capacity: int = 8) -> None:
-        if (
-            not isinstance(initial_capacity, int)
-            or isinstance(initial_capacity, bool)
-            or initial_capacity <= 0
-        ):
-            raise ValueError("initial_capacity must be a positive integer")
         # 각 버킷은 서로 다른 리스트여야 한다.
         self._buckets = [DoublyLinkedList() for _ in range(initial_capacity)]
         self._size = 0
 
-    @property
     def capacity(self) -> int:
         """현재 버킷 개수를 반환한다."""
         return len(self._buckets)
@@ -39,10 +32,6 @@ class HashMap:
     def size(self) -> int:
         """저장된 키 개수를 반환한다."""
         return self._size
-
-    def __len__(self) -> int:
-        """len으로도 키 개수를 확인할 수 있다."""
-        return self.size()
 
     def _hash(self, key: str) -> int:
         """문자를 차례로 섞어 32비트 범위의 해시값을 만든다."""
@@ -56,7 +45,7 @@ class HashMap:
 
     def _bucket_index(self, key: str) -> int:
         """해시값을 현재 버킷 범위의 인덱스로 바꾼다."""
-        return self._hash(key) % self.capacity
+        return self._hash(key) % self.capacity()
 
     def _find_node(self, key: str) -> Optional[Node]:
         """해당 버킷에서 키가 일치하는 노드를 찾는다."""
@@ -78,7 +67,7 @@ class HashMap:
         bucket.insert_back(_Entry(key, value))
         self._size += 1
         # 0.75와 같을 때는 유지하고, 초과할 때만 확장한다.
-        if self._size * 4 > self.capacity * 3:
+        if self._size * 4 > self.capacity() * 3:
             self._resize()
 
     def get(self, key: str) -> Any:

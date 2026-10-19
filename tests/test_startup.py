@@ -45,7 +45,7 @@ class StartupTests(unittest.TestCase):
             'mini-redis> "Alice Kim"\n'
             "mini-redis> (error) ERR wrong number of arguments for 'GET' command\n"
             "mini-redis> (error) ERR unknown command 'HELLO'\n"
-            'mini-redis> (error) ERR unbalanced quotes in request\n'
+            'mini-redis> (error) ERR No closing quotation\n'
             'mini-redis> "Alice Kim"\n'
             'mini-redis> (integer) 1\n'
             'mini-redis> (empty array)\n'
